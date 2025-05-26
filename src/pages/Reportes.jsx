@@ -8,7 +8,7 @@ import DatePicker from 'react-datepicker';
 import "react-datepicker/dist/react-datepicker.css";
 
 export default function Reportes() {
-  // Estado para filtros
+  // 1. Primero todos los estados
   const [dateFrom, setDateFrom] = useState(() => {
     const today = new Date();
     const thirtyDaysAgo = new Date(today);
@@ -22,15 +22,13 @@ export default function Reportes() {
   const [selectedFamily, setSelectedFamily] = useState('');
   const [families, setFamilies] = useState([]);
 
-  // Obtener lista de familias disponibles (usando el sistema con fallback)
+  // 2. Luego los efectos
   useEffect(() => {
     const fetchFamilies = async () => {
       try {
-        // Intentará obtener del backend, si falla usará datos locales
         const data = await fetchYield();
-        // Extraer familias únicas de los datos
         const uniqueFamilies = [...new Set(data.results.map(item => item.Family))];
-        setFamilies(uniqueFamilies.filter(f => f)); // Filtrar valores vacíos
+        setFamilies(uniqueFamilies.filter(f => f));
       } catch (err) {
         console.error("Error al obtener familias:", err);
       }
@@ -38,10 +36,36 @@ export default function Reportes() {
     fetchFamilies();
   }, []);
 
-  // Traer los datos de los hooks que guardan en localStorage
+  // 3. Hooks personalizados
   const { datosMQS, cargando: cargandoMQS, error: errorMQS } = useMQS(dateFrom, dateTo);
   const { datosMES, cargando: cargandoMes, error: errorMes } = useMES(dateFrom, dateTo);
   const { datosYield, cargando: cargandoYield, error: errorYield } = useYield(dateFrom, dateTo);
+
+  // 4. Todos los useMemo juntos
+  const equiposReparados = React.useMemo(() => {
+    if (!datosMES || !Array.isArray(datosMES)) {
+      console.log("No hay datos MES disponibles");
+      return 0;
+    }
+
+    // Filtra por fecha y cuenta las reparaciones
+    const total = datosMES.reduce((count, item) => {
+      if (!item.FECHA_REPARACION) return count;
+      
+      const repairDate = new Date(item.FECHA_REPARACION);
+      const from = new Date(dateFrom);
+      const to = new Date(dateTo);
+      to.setHours(23, 59, 59, 999);
+
+      if (repairDate >= from && repairDate <= to) {
+        return count + 1; // Suma 1 por cada equipo reparado en el rango de fechas
+      }
+      return count;
+    }, 0);
+
+    console.log("Total equipos reparados:", total);
+    return total;
+  }, [datosMES, dateFrom, dateTo]);
 
   // Agrupa y calcula el FTY promedio por familia
   const ftyPorFamilia = React.useMemo(() => {
@@ -336,7 +360,7 @@ export default function Reportes() {
     // Los hooks se ejecutarán automáticamente con las nuevas fechas
   };
 
-  // Estructura básica con filtros, sin gráficos ni tablas
+  // 6. Finalmente el renderizado
   return (
     <div className="p-4 w-full">
       {/* Filtros */}
@@ -439,7 +463,8 @@ export default function Reportes() {
           <div className="text-2xl font-bold">{produccionTotal}</div>
         </div>
         <div className="bg-white shadow rounded p-4 flex-1 text-center">
-          {/* Vacío */}
+          <div className="text-xs text-gray-500 mb-1">Equipos Reparados</div>
+          <div className="text-2xl font-bold">{equiposReparados}</div>
         </div>
         <div className="bg-white shadow rounded p-4 flex-1 text-center">
           <div className="text-xs text-gray-500 mb-1">Promedio DPHU</div>
