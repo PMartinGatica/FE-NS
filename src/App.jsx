@@ -1,5 +1,6 @@
 // frontend/src/App.jsx
 import React, { useState } from 'react';
+import { BrowserRouter as Router } from 'react-router-dom';
 import LoginScreen from './components/LoginScreen'; // Pantalla de inicio de sesión
 import WelcomeMessage from './components/WelcomeMessage'; // Mensaje de bienvenida
 import DashboardLayout from './layouts/DashboardLayout'; // Layout principal del dashboard
@@ -23,7 +24,13 @@ function App() {
     return <LoginScreen onLogin={handleLogin} />;
   if (showWelcome)
     return <WelcomeMessage user={currentUser} onFadeComplete={() => setWelcome(false)} />;
-  return <DashboardLayout user={currentUser} />;
+    
+  // Wrapping DashboardLayout with Router
+  return (
+    <Router>
+      <DashboardLayout user={currentUser} />
+    </Router>
+  );
 }
 
 export default App;

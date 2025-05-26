@@ -1,15 +1,17 @@
 // frontend/src/components/DashboardLayout.jsx
 import { useState } from 'react';
+import { Routes, Route, useLocation } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
-import ContenidoTablero from '../componentes/ContenidoTablero';
+import ContenidoTablero from '../components/ContenidoTablero';
+import Reportes from '../pages/Reportes';
 
 const DashboardLayout = ({ user, onLogout }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [activePage, setActivePage] = useState('inicio');
   const [collapsed, setCollapsed] = useState(() => {
     return JSON.parse(localStorage.getItem('sidebarCollapsed')) || false;
   });
+  const location = useLocation();
 
   const toggleSidebar = () => {
     setSidebarOpen(!sidebarOpen);
@@ -23,11 +25,11 @@ const DashboardLayout = ({ user, onLogout }) => {
     });
   };
 
-  const handleSetActivePage = (page) => {
-    setActivePage(page);
-    if (window.innerWidth < 768 && sidebarOpen) {
-      setSidebarOpen(false);
-    }
+  // Determinar la página activa basada en la ruta actual
+  const getActivePage = () => {
+    const path = location.pathname;
+    if (path === '/') return 'inicio';
+    return path.substring(1); // Elimina la barra inicial
   };
 
   return (
@@ -35,17 +37,21 @@ const DashboardLayout = ({ user, onLogout }) => {
       <Sidebar
         collapsed={collapsed}
         toggleCollapsed={toggleCollapsed}
-        activePage={activePage}
-        setActivePage={handleSetActivePage}
+        activePage={getActivePage()}
         currentUser={user}
       />
       <div
         className="flex flex-col flex-1 overflow-hidden transition-all duration-300"
         style={{ marginLeft: collapsed ? 80 : 256 }}
       >
-        <Header toggleSidebar={toggleSidebar} activePage={activePage} currentUser={user} />
+        <Header toggleSidebar={toggleSidebar} activePage={getActivePage()} currentUser={user} />
         <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 p-4 md:p-6 lg:p-8">
-          <ContenidoTablero activePage={activePage} user={user} />
+          <Routes>
+            <Route path="/" element={<ContenidoTablero activePage="inicio" user={user} />} />
+            <Route path="/inicio" element={<ContenidoTablero activePage="inicio" user={user} />} />
+            <Route path="/reportes" element={<Reportes />} />
+            {/* Añadir más rutas según sea necesario */}
+          </Routes>
         </main>
       </div>
     </div>

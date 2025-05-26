@@ -1,12 +1,12 @@
 import React from 'react';
 import { Home, CheckSquare, BarChart, Zap, Folder, BookOpen, X, Menu } from 'react-feather';
 import { motion } from 'framer-motion';
+import { NavLink } from 'react-router-dom';
 
 const Sidebar = ({
   collapsed,
   toggleCollapsed,
   activePage,
-  setActivePage,
   currentUser
 }) => {
   // *** Colores Sidebar: Gris Oscuro ***
@@ -33,18 +33,6 @@ const Sidebar = ({
     item.roles.includes(currentUser?.role || '')
   );
 
-  const baseItemClasses = `flex items-center w-full px-4 py-3 text-sm font-medium rounded-md transition-colors duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-inset focus:ring-white`;
-  const activeItemClasses = `${activeBg} ${activeTextColor}`;
-  const inactiveItemClasses = `${inactiveTextColor} ${hoverBg} hover:text-white`;
-
-  const handleItemClick = (page) => {
-    if (typeof setActivePage === 'function') {
-      setActivePage(page);
-    } else {
-      console.error('setActivePage no es una función en Sidebar');
-    }
-  };
-
   return (
     <motion.div
       initial={{ width: collapsed ? 80 : 256 }}
@@ -55,9 +43,9 @@ const Sidebar = ({
       <div className={`flex items-center justify-between h-20 px-4 border-b ${borderColor}`}>
         {!collapsed && (
           <img
-            src="https://clave.newsan.com.ar/images/logos/customLogo.png"
+            src="public/newsan_logo.svg"
             alt="Logo Newsan Clave"
-            className="h-8 md:h-10 w-auto"
+            className="h-10 w-auto max-w-[140px] object-contain"
             onError={(e) => {
               e.target.onerror = null;
               e.target.src = 'https://placehold.co/150x40/ffffff/cccccc?text=NEWSAN';
@@ -73,24 +61,25 @@ const Sidebar = ({
         </button>
       </div>
       <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
-        {visibleMenuItems.map((item) => (
-          <button
-            key={item.name}
-            onClick={() => handleItemClick(item.page)}
-            className={`${baseItemClasses} ${
-              activePage === item.page ? activeItemClasses : inactiveItemClasses
-            }`}
-            aria-current={activePage === item.page ? 'page' : undefined}
-          >
-            <item.icon
-              className={`mr-3 h-5 w-5 flex-shrink-0 ${
-                activePage === item.page ? activeIconColor : iconColor
-              }`}
-              aria-hidden="true"
-            />
-            {!collapsed && item.name}
-          </button>
-        ))}
+        {visibleMenuItems.map((item) => {
+          const Icon = item.icon;
+          return (
+            <NavLink
+              key={item.page}
+              to={item.page === 'inicio' ? '/' : `/${item.page}`}
+              className={({ isActive }) =>
+                `flex items-center w-full px-4 py-3 text-sm font-medium rounded-md transition-colors duration-150 ease-in-out ${
+                  isActive
+                    ? `${activeBg} ${activeTextColor}`
+                    : `${inactiveTextColor} ${hoverBg} hover:text-white`
+                }`
+              }
+            >
+              <Icon className={`${collapsed ? 'mx-auto' : 'mr-3'} h-5 w-5`} />
+              {!collapsed && <span>{item.name}</span>}
+            </NavLink>
+          );
+        })}
       </nav>
       {!collapsed && (
         <div className={`px-4 py-4 border-t ${borderColor} text-center text-xs ${iconColor}`}>

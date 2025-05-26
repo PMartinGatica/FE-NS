@@ -26,7 +26,7 @@ export default function LoginScreen({ onLogin }) {
         {/* Logo Newsan */}
         <div className="flex justify-center mb-6">
           <img
-            src="https://clave.newsan.com.ar/images/logos/customLogo.png"
+            src="/Logo_Negro_1.png"
             alt="Logo Newsan"
             className="h-12 w-auto"
             onError={e => {
@@ -62,7 +62,7 @@ export default function LoginScreen({ onLogin }) {
                   <path
                     className="opacity-75"
                     fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291..."
+                    d="M12 2a10 10 0 100 20 10 10 0 000-20zm0 18a8 8 0 110-16 8 8 0 010 16z"
                   />
                 </svg>
                 Verificando...
@@ -84,3 +84,4 @@ export default function LoginScreen({ onLogin }) {
     </div>
   );
 }
+
