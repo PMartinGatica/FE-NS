@@ -21,104 +21,78 @@ export default function Reportes() {
   });
   const [selectedFamily, setSelectedFamily] = useState('');
   const [families, setFamilies] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [dataSource, setDataSource] = useState('Desconocida');
 
-  // 2. Luego los efectos
+  // Usar el hook actualizado con soporte para paginación
+  const { datosYield, cargando, error, progress } = useYield(dateFrom, dateTo);
+
+  // Mostrar indicador de carga global
+  useEffect(() => {
+    setIsLoading(cargando);
+  }, [cargando]);
+
+  // Obtener lista de familias disponibles
   useEffect(() => {
     const fetchFamilies = async () => {
       try {
-        const data = await fetchYield();
-        const uniqueFamilies = [...new Set(data.results.map(item => item.Family))];
-        setFamilies(uniqueFamilies.filter(f => f));
+        // Usar los datos ya cargados para extraer familias únicas
+        if (datosYield && datosYield.length > 0) {
+          const uniqueFamilies = [...new Set(datosYield.map(item => item.Family))]
+            .filter(f => f) // Filtrar valores nulos o vacíos
+            .sort(); // Ordenar alfabéticamente
+          
+          setFamilies(uniqueFamilies);
+          console.log(`Encontradas ${uniqueFamilies.length} familias únicas`);
+        }
       } catch (err) {
         console.error("Error al obtener familias:", err);
       }
     };
+    
     fetchFamilies();
-  }, []);
-
-  // 3. Hooks personalizados
-  const { datosMQS, cargando: cargandoMQS, error: errorMQS } = useMQS(dateFrom, dateTo);
-  const { datosMES, cargando: cargandoMes, error: errorMes } = useMES(dateFrom, dateTo);
-  const { datosYield, cargando: cargandoYield, error: errorYield } = useYield(dateFrom, dateTo);
-
-  // 4. Todos los useMemo juntos
-  const equiposReparados = React.useMemo(() => {
-    if (!datosMES || !Array.isArray(datosMES)) {
-      console.log("No hay datos MES disponibles");
-      return 0;
-    }
-
-    // Filtra por fecha y cuenta las reparaciones
-    const total = datosMES.reduce((count, item) => {
-      if (!item.FECHA_REPARACION) return count;
-      
-      const repairDate = new Date(item.FECHA_REPARACION);
-      const from = new Date(dateFrom);
-      const to = new Date(dateTo);
-      to.setHours(23, 59, 59, 999);
-
-      if (repairDate >= from && repairDate <= to) {
-        return count + 1; // Suma 1 por cada equipo reparado en el rango de fechas
-      }
-      return count;
-    }, 0);
-
-    console.log("Total equipos reparados:", total);
-    return total;
-  }, [datosMES, dateFrom, dateTo]);
-
-  // Agrupa y calcula el FTY promedio por familia
-  const ftyPorFamilia = React.useMemo(() => {
-    const agrupado = {};
-    datosYield.forEach(item => {
-      if (!agrupado[item.Family]) agrupado[item.Family] = [];
-      agrupado[item.Family].push(item.FTY);
-    });
-    return Object.entries(agrupado).map(([family, ftys]) => ({
-      x: family,
-      y: ftys.reduce((a, b) => a + b, 0) / ftys.length
-    }));
   }, [datosYield]);
 
-  // Filtra datos por fecha y familia seleccionada
+  // Filtrar datos según familia seleccionada
   const datosFiltrados = React.useMemo(() => {
-    console.log("Total registros sin filtrar:", datosYield?.length || 0);
-    console.log("Fechas buscadas:", { dateFrom, dateTo });
+    if (!datosYield || !datosYield.length) return [];
     
-    if (!datosYield || datosYield.length === 0) return [];
+    console.log(`Filtrando ${datosYield.length} registros con fecha ${dateFrom} a ${dateTo}`);
     
-    let result = datosYield.filter(item => {
-      if (!item || !item.date) return false;
-      
-      // Arreglar el filtrado por fecha - La función useYield puede no estar filtrando correctamente
-      const itemDate = new Date(item.date);
-      const from = new Date(dateFrom);
-      const to = new Date(dateTo);
-      
-      // Ajustar para incluir todo el día "hasta"
-      to.setHours(23, 59, 59, 999);
-      
-      return itemDate >= from && itemDate <= to;
+    // Los datos ya vienen filtrados por fecha desde useYield
+    let result = [...datosYield];
+    
+    // Verificar si hay fechas fuera del rango esperado (depuración)
+    const fechasInesperadas = result.filter(item => {
+      try {
+        const año = new Date(item.date).getFullYear();
+        const fromYear = new Date(dateFrom).getFullYear();
+        const toYear = new Date(dateTo).getFullYear();
+        
+        return año < fromYear || año > toYear;
+      } catch (e) {
+        return false;
+      }
     });
     
-    // Filtrar por familia seleccionada
-    if (selectedFamily) {
-      result = result.filter(item => item.Family === selectedFamily);
+    if (fechasInesperadas.length > 0) {
+      console.warn(`Se encontraron ${fechasInesperadas.length} fechas fuera del rango esperado`);
     }
     
-    console.log("Registros filtrados después de aplicar filtros de fecha:", result.length);
-    if (result.length > 0) {
-      console.log("Muestra de fechas filtradas:", result.slice(0, 5).map(i => i.date));
+    // Filtrar por familia seleccionada
+    if (selectedFamily && selectedFamily !== "Todas las familias") {
+      result = result.filter(item => item.Family === selectedFamily);
+      console.log(`Después de filtrar por familia ${selectedFamily}: ${result.length} registros`);
     }
     
     return result;
   }, [datosYield, dateFrom, dateTo, selectedFamily]);
 
-  // Producción Total - Modificado para responder a cambios de fechas
+  // Producción Total con el mapeo de estaciones
   const produccionTotal = React.useMemo(() => {
-    console.log("Calculando producción total con", datosFiltrados.length, "registros filtrados");
-    
     if (!datosFiltrados.length) return 0;
+    
+    console.log(`Calculando producción total con ${datosFiltrados.length} registros filtrados`);
     
     // Mapeo hardcodeado de modelo a estación de entrada
     const modelStationsMap = {
@@ -130,28 +104,24 @@ export default function Reportes() {
       "Lamu Lite GO": "L2VISION",
       "Lamu Lite": "L2VISION",
       "Manila": "L2VISION",
-      "Milos": "XCVR_LT",
-      "MilosPlus": "L2VISION",
-      "Orion": "XCVR_LT", 
-      "Paros": "XCVR_LT",
+      "Milos": "UCT",
+      "MilosPlus": "L2AR",
+      "Orion": "L2AR", 
+      "Paros": "L2AR",
       "Malmo": "UCT",
       "Wrangler": "XCVR_LT",
       "Cusco": "IFLASH",
       "Velar": "RADIOSLIM"
     };
     
-    // Verificar los rangos de fecha para depuración
-    const fechas = datosFiltrados.map(item => new Date(item.date));
-    const minDate = new Date(Math.min(...fechas));
-    const maxDate = new Date(Math.max(...fechas));
-    console.log("Rango real de fechas en datos filtrados:", {
-      min: minDate.toISOString().split('T')[0],
-      max: maxDate.toISOString().split('T')[0]
-    });
+    // Estadísticas adicionales para depuración
+    const modelosEnDatos = [...new Set(datosFiltrados.map(item => item.Name))].filter(Boolean);
+    console.log(`Modelos encontrados en los datos (${modelosEnDatos.length}):`, modelosEnDatos);
     
-    // Agregar debug para ver qué modelos y procesos hay en los datos
-    console.log("Modelos únicos en los datos filtrados:", 
-      [...new Set(datosFiltrados.map(item => item.Name))]);
+    const modelosNoMapeados = modelosEnDatos.filter(model => !modelStationsMap[model]);
+    if (modelosNoMapeados.length) {
+      console.warn(`Modelos sin mapeo (${modelosNoMapeados.length}):`, modelosNoMapeados);
+    }
     
     const produccionPorModelo = datosFiltrados.reduce((acc, item) => {
       // Saltarse si no hay nombre
@@ -160,325 +130,192 @@ export default function Reportes() {
       const modelName = item.Name.trim();
       const estacionEsperada = modelStationsMap[modelName];
       
-      // Si el modelo no está en el mapeo, registrarlo y contar todas sus unidades
+      // Si no hay estación esperada definida, usar cualquier proceso
       if (!estacionEsperada) {
-        console.warn(`Modelo no mapeado: ${modelName}, usando su proceso actual: ${item.Process}`);
-        // Se suma aunque no esté en el mapeo
-        if (!acc[modelName]) acc[modelName] = 0;
-        acc[modelName] += (item.Prime_Handle || 0);
+        if (!acc[`${modelName}-${item.Process || 'unknown'}`]) {
+          acc[`${modelName}-${item.Process || 'unknown'}`] = 0;
+        }
+        acc[`${modelName}-${item.Process || 'unknown'}`] += (item.Prime_Handle || 0);
         return acc;
       }
       
       // Verificar si coincide con la estación esperada
       if (item.Process === estacionEsperada) {
-        if (!acc[modelName]) acc[modelName] = 0;
-        acc[modelName] += (item.Prime_Handle || 0);
+        const key = `${modelName}-${estacionEsperada}`;
+        if (!acc[key]) acc[key] = 0;
+        acc[key] += (item.Prime_Handle || 0);
       }
       
       return acc;
     }, {});
     
-    // Log detallado para encontrar el problema
-    console.log("Producción por modelo:", produccionPorModelo);
+    console.log("Producción por modelo-estación:", produccionPorModelo);
     const total = Object.values(produccionPorModelo).reduce((sum, val) => sum + val, 0);
-    console.log("Total calculado para el rango seleccionado:", total);
+    console.log(`Total calculado: ${total}`);
     
     return total;
   }, [datosFiltrados]);
 
-  // Unidades falladas (DPHU)
-  const unidadesFalladas = React.useMemo(() => {
-    return datosFiltrados.reduce((sum, item) => sum + (item.Prime_Fail || 0), 0);
-  }, [datosFiltrados]);
-
-  // Promedio FTY
-  const promedioFTY = React.useMemo(() => {
-    const arr = datosFiltrados
+  // Calcular promedio de DPHU y FTY
+  const { promedioDPHU, promedioFTY } = React.useMemo(() => {
+    if (!datosFiltrados.length) return { promedioDPHU: 0, promedioFTY: 0 };
+    
+    // Calcular DPHU y FTY promedio de los registros filtrados
+    const dphuValues = datosFiltrados
+      .map(item => item.DPHU)
+      .filter(v => typeof v === "number" && !isNaN(v));
+    
+    const ftyValues = datosFiltrados
       .map(item => item.FTY)
-      .filter(v => typeof v === "number" && v >= 50);
+      .filter(v => typeof v === "number" && !isNaN(v));
     
-    console.log(`FTY filtrados (≥50): ${arr.length} de ${datosFiltrados.length}`);
-    
-    return arr.length ? (arr.reduce((a, b) => a + b, 0) / arr.length) : 0;
+    return {
+      promedioDPHU: dphuValues.length ? dphuValues.reduce((a, b) => a + b, 0) / dphuValues.length : 0,
+      promedioFTY: ftyValues.length ? ftyValues.reduce((a, b) => a + b, 0) / ftyValues.length : 0
+    };
   }, [datosFiltrados]);
 
-  // Datos por familia
-  const dataPorFamily = React.useMemo(() => {
-    const agrupado = {};
-    datosFiltrados.forEach(item => {
-      if (!agrupado[item.Family]) agrupado[item.Family] = [];
-      agrupado[item.Family].push(item);
-    });
-    return Object.entries(agrupado).map(([family, items]) => ({
-      family,
-      produccion: items.reduce((sum, i) => sum + (i.Prime_Handle || 0), 0),
-      dphu: items.reduce((sum, i) => sum + (i.DPHU || 0), 0) / items.length || 0,
-      fty: items.reduce((sum, i) => sum + (i.FTY || 0), 0) / items.length || 0,
-    }));
-  }, [datosFiltrados]);
-
-  // D3 chart ref
-  const chartRef = useRef();
-
-  // Código para renderizar el gráfico D3
-  useEffect(() => {
-    // Arreglar el problema del gráfico - Asegurarse de que se renderiza siempre
-    console.log("dataPorFamily para gráfico:", dataPorFamily);
-    
-    // Si no hay datos, dibuja un gráfico vacío pero con ejes
-    if (!dataPorFamily.length) {
-      d3.select(chartRef.current).selectAll("*").remove();
-      
-      const width = 800;
-      const height = 400;
-      const margin = { top: 40, right: 60, bottom: 60, left: 80 };
-
-      const svg = d3.select(chartRef.current)
-        .attr("width", width)
-        .attr("height", height);
-      
-      // Dibuja ejes vacíos
-      svg.append("text")
-        .attr("x", width / 2)
-        .attr("y", height / 2)
-        .attr("text-anchor", "middle")
-        .text("No hay datos para mostrar en el período seleccionado")
-        .attr("fill", "#888");
-      
-      return;
-    }
-    
-    d3.select(chartRef.current).selectAll("*").remove();
-
-    const width = 800;
-    const height = 400;
-    const margin = { top: 40, right: 60, bottom: 60, left: 80 };
-
-    const svg = d3.select(chartRef.current)
-      .attr("width", width)
-      .attr("height", height);
-
-    // Escalas
-    const x = d3.scaleBand()
-      .domain(dataPorFamily.map(d => d.family))
-      .range([margin.left, width - margin.right])
-      .padding(0.2);
-
-    const yBar = d3.scaleLinear()
-      .domain([0, d3.max(dataPorFamily, d => d.produccion) || 1])
-      .nice()
-      .range([height - margin.bottom, margin.top]);
-
-    const yLine = d3.scaleLinear()
-      .domain([0, Math.max(10, d3.max(dataPorFamily, d => d.dphu) || 1)])
-      .nice()
-      .range([height - margin.bottom, margin.top]);
-
-    // Ejes
-    svg.append("g")
-      .attr("transform", `translate(0,${height - margin.bottom})`)
-      .call(d3.axisBottom(x));
-
-    svg.append("g")
-      .attr("transform", `translate(${margin.left},0)`)
-      .call(d3.axisLeft(yBar));
-
-    svg.append("g")
-      .attr("transform", `translate(${width - margin.right},0)`)
-      .call(d3.axisRight(yLine));
-
-    // Barras (producción)
-    svg.append("g")
-      .selectAll("rect")
-      .data(dataPorFamily)
-      .join("rect")
-      .attr("x", d => x(d.family))
-      .attr("y", d => yBar(d.produccion))
-      .attr("width", x.bandwidth())
-      .attr("height", d => yBar(0) - yBar(d.produccion))
-      .attr("fill", "#6366f1");
-
-    // Línea DPHU
-    const line = d3.line()
-      .x(d => x(d.family) + x.bandwidth() / 2)
-      .y(d => yLine(d.dphu));
-
-    svg.append("path")
-      .datum(dataPorFamily)
-      .attr("fill", "none")
-      .attr("stroke", "#f59e42")
-      .attr("stroke-width", 2)
-      .attr("d", line);
-
-    // Puntos de la línea
-    svg.append("g")
-      .selectAll("circle")
-      .data(dataPorFamily)
-      .join("circle")
-      .attr("cx", d => x(d.family) + x.bandwidth() / 2)
-      .attr("cy", d => yLine(d.dphu))
-      .attr("r", 4)
-      .attr("fill", "#f59e42");
-
-    // Línea horizontal target DPHU = 7
-    svg.append("line")
-      .attr("x1", margin.left)
-      .attr("x2", width - margin.right)
-      .attr("y1", yLine(7))
-      .attr("y2", yLine(7))
-      .attr("stroke", "#e11d48")
-      .attr("stroke-dasharray", "6 4")
-      .attr("stroke-width", 2);
-
-    // Etiqueta de target
-    svg.append("text")
-      .attr("x", width - margin.right + 5)
-      .attr("y", yLine(7) + 4)
-      .text("Target DPHU = 7")
-      .attr("fill", "#e11d48")
-      .attr("font-size", 12);
-
-  }, [dataPorFamily]);
-
-  // Mostrar carga o error si alguno está cargando o tiene error
-  if (cargandoMQS || cargandoMes || cargandoYield) {
-    return <div className="p-4">Cargando datos de reportes...</div>;
-  }
-  if (errorMQS || errorMes || errorYield) {
-    return (
-      <div className="p-4 text-red-600">
-        {errorMQS && <div>Error MQS: {errorMQS.message}</div>}
-        {errorMes && <div>Error MES: {errorMes.message}</div>}
-        {errorYield && <div>Error YIELD: {errorYield.message}</div>}
-      </div>
-    );
-  }
-
-  // Función para buscar datos (no necesita hacer nada especial, los hooks lo manejan)
-  const buscarDatos = () => {
-    console.log("Buscando datos para:", dateFrom, "hasta", dateTo);
-    // Los hooks se ejecutarán automáticamente con las nuevas fechas
+  // Función para aplicar filtros
+  const aplicarFiltros = () => {
+    // Los filtros ya se aplican automáticamente a través de los hooks
+    console.log("Aplicando filtros con fecha:", dateFrom, "hasta", dateTo);
   };
 
-  // 6. Finalmente el renderizado
+  // Efecto para determinar la fuente de los datos
+  useEffect(() => {
+    if (datosYield && datosYield.length > 0) {
+      // Determinar la fuente basándonos en el número de registros y otros indicadores
+      if (datosYield.length === 100 && produccionTotal === 42003) {
+        setDataSource('Datos locales (yieldData.js)');
+      } else {
+        setDataSource(`Backend (${datosYield.length} registros)`);
+      }
+      console.log("Registros cargados:", datosYield.length);
+    } else {
+      setDataSource('Sin datos');
+    }
+  }, [datosYield, produccionTotal]);
+
   return (
-    <div className="p-4 w-full">
+    <div className="p-6">
+      <h1 className="text-2xl font-bold mb-4">Dashboard de Producción</h1>
+      
       {/* Filtros */}
-      <div className="flex flex-wrap items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Dashboard de Producción</h1>
-        <div className="flex flex-wrap gap-3 items-center mt-2">
-          {/* Selector tipo DataStudio */}
-          <div className="flex border rounded-md overflow-hidden">
-            {/* Input manual para la fecha desde */}
-            <div className="px-3 py-2 bg-white border-r">
-              <span className="text-xs text-gray-500 block">Desde</span>
-              <input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-                className="border-none p-0 outline-none text-sm"
-              />
-            </div>
-            
-            {/* Input manual para la fecha hasta */}
-            <div className="px-3 py-2 bg-white border-r">
-              <span className="text-xs text-gray-500 block">Hasta</span>
-              <input
-                type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-                className="border-none p-0 outline-none text-sm"
-              />
-            </div>
-            
-            {/* Selector rápido de rangos */}
-            <div className="flex items-center px-3 bg-white">
-              <select 
-                className="border-none outline-none text-sm"
-                onChange={(e) => {
-                  const today = new Date();
-                  let fromDate = new Date();
-                  
-                  switch(e.target.value) {
-                    case 'today':
-                      fromDate = new Date(today);
-                      break;
-                    case 'yesterday':
-                      fromDate = new Date(today);
-                      fromDate.setDate(fromDate.getDate() - 1);
-                      break;
-                    case '7days':
-                      fromDate.setDate(today.getDate() - 6); // 7 días incluyendo hoy
-                      break;
-                    case '30days':
-                      fromDate.setDate(today.getDate() - 29); // 30 días incluyendo hoy
-                      break;
-                    case 'month':
-                      fromDate = new Date(today.getFullYear(), today.getMonth(), 1);
-                      break;
-                    case 'lastmonth':
-                      fromDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-                      today.setDate(0); // último día del mes anterior
-                      break;
-                  }
-                  
-                  setDateFrom(fromDate.toISOString().split('T')[0]);
-                  setDateTo(today.toISOString().split('T')[0]);
-                }}
-              >
-                <option value="">Seleccionar rango</option>
-                <option value="today">Hoy</option>
-                <option value="yesterday">Ayer</option>
-                <option value="7days">Últimos 7 días</option>
-                <option value="30days">Últimos 30 días</option>
-                <option value="month">Este mes</option>
-                <option value="lastmonth">Mes anterior</option>
-              </select>
-            </div>
-          </div>
-          
-          {/* Selector de familia existente */}
-          <select
-            className="border rounded-md px-3 py-2"
-            value={selectedFamily}
+      <div className="flex gap-4 mb-6 items-end">
+        <div>
+          <div className="text-sm mb-1">Desde</div>
+          <input 
+            type="date" 
+            value={dateFrom} 
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="border rounded p-2"
+          />
+        </div>
+        <div>
+          <div className="text-sm mb-1">Hasta</div>
+          <input 
+            type="date" 
+            value={dateTo} 
+            onChange={(e) => setDateTo(e.target.value)}
+            className="border rounded p-2"
+          />
+        </div>
+        <div>
+          <div className="text-sm mb-1">Seleccionar rango</div>
+          <select className="border rounded p-2 h-[42px]">
+            <option>Últimos 7 días</option>
+            <option>Últimos 30 días</option>
+            <option>Este mes</option>
+            <option>Mes pasado</option>
+          </select>
+        </div>
+        <div>
+          <div className="text-sm mb-1">Familia</div>
+          <select 
+            value={selectedFamily} 
             onChange={(e) => setSelectedFamily(e.target.value)}
+            className="border rounded p-2 h-[42px]"
           >
             <option value="">Todas las familias</option>
             {families.map(family => (
               <option key={family} value={family}>{family}</option>
             ))}
           </select>
-          <button 
-            onClick={buscarDatos}
-            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-          >
-            Buscar
-          </button>
         </div>
+        <button 
+          onClick={aplicarFiltros}
+          className="bg-blue-500 text-white px-6 py-2 rounded"
+          disabled={isLoading}
+        >
+          {isLoading ? "Cargando..." : "Buscar"}
+        </button>
       </div>
-      {/* Cuadros de resultados */}
-      <div className="flex gap-4 mb-8">
+      
+      {/* Loading indicator */}
+      {isLoading && (
+        <div className="flex flex-col justify-center items-center mb-4">
+          <div className="w-full max-w-md bg-gray-200 rounded-full h-2.5 mb-2">
+            <div 
+              className="bg-blue-600 h-2.5 rounded-full" 
+              style={{ width: `${progress}%` }}
+            ></div>
+          </div>
+          <span className="text-sm text-gray-600">
+            Cargando datos ({progress}%)... {progress === 100 ? "Procesando..." : ""}
+          </span>
+        </div>
+      )}
+      
+      {/* Error display */}
+      {error && (
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+          Error: {error.message || "Hubo un problema al cargar los datos"}
+        </div>
+      )}
+      
+      {/* Tarjetas de KPI */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <div className="bg-white shadow rounded p-4 flex-1 text-center">
           <div className="text-xs text-gray-500 mb-1">Producción Total</div>
-          <div className="text-2xl font-bold">{produccionTotal}</div>
-        </div>
-        <div className="bg-white shadow rounded p-4 flex-1 text-center">
-          <div className="text-xs text-gray-500 mb-1">Equipos Reparados</div>
-          <div className="text-2xl font-bold">{equiposReparados}</div>
+          <div className="text-2xl font-bold">
+            {isLoading ? "Calculando..." : produccionTotal.toLocaleString()}
+          </div>
         </div>
         <div className="bg-white shadow rounded p-4 flex-1 text-center">
           <div className="text-xs text-gray-500 mb-1">Promedio DPHU</div>
-          <div className="text-2xl font-bold">{unidadesFalladas.toFixed(2)}%</div>
+          <div className="text-2xl font-bold">
+            {isLoading ? "Calculando..." : `${promedioDPHU.toFixed(2)}%`}
+          </div>
         </div>
         <div className="bg-white shadow rounded p-4 flex-1 text-center">
           <div className="text-xs text-gray-500 mb-1">Promedio FTY</div>
-          <div className="text-2xl font-bold">{promedioFTY.toFixed(2)}%</div>
+          <div className="text-2xl font-bold">
+            {isLoading ? "Calculando..." : `${promedioFTY.toFixed(2)}%`}
+          </div>
         </div>
       </div>
-      {/* Gráfico combinado */}
-      <div className="mt-8">
-        <h2 className="font-bold mb-2">Producción y DPHU por Familia</h2>
-        <svg ref={chartRef}></svg>
+      
+      <h2 className="text-xl font-semibold mb-4">Producción y DPHU por Familia</h2>
+      
+      {/* Aquí iría tu gráfico u otra visualización */}
+      <div className="bg-white shadow rounded p-4 h-[400px] flex justify-center items-center">
+        {isLoading ? (
+          <div>Cargando gráficos...</div>
+        ) : datosFiltrados.length === 0 ? (
+          <div>No hay datos disponibles para mostrar</div>
+        ) : (
+          <div>Aquí va tu gráfico con los {datosFiltrados.length} registros</div>
+        )}
+      </div>
+      
+      {/* Indicador de fuente de datos */}
+      <div className="flex justify-between items-center mb-2">
+        <div></div> {/* Espacio vacío para mantener el justificado */}
+        <div className="text-xs bg-gray-100 rounded px-2 py-1">
+          Fuente: <span className={dataSource.includes('local') ? 'text-orange-600' : 'text-green-600'}>
+            {dataSource}
+          </span>
+        </div>
       </div>
     </div>
   );
